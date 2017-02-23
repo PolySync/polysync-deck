@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+
+appDir=~/.polysync-deck
+pathExport='export PATH="$PATH:$HOME/.polysync-deck"'
+
+installDeck () {
+
+  # Create the deck dir
+  mkdir -p $appDir
+
+  # move in themes
+  cp -r themes $appDir/themes
+  cp deck $appDir/deck
+
+  cd $appDir
+
+  # Install Decktape
+  echo ''
+  echo -e "\e[1m > Installing Decktape \e[0m "
+  echo ''
+
+  curl -L https://github.com/astefanutti/decktape/archive/v1.0.0.tar.gz | tar -xz --exclude phantomjs
+
+  cd decktape-1.0.0
+
+  # Install Phantom JS Fork
+  echo ''
+  echo -e "\e[1m > Installing Phantom JS \e[0m "
+  echo ''
+
+  local OS="$(uname -s)"
+
+  case "$OS" in
+
+      Linux)
+          curl -L https://github.com/astefanutti/decktape/releases/download/v1.0.0/phantomjs-linux-x86-64 -o phantomjs
+          ;;
+
+      Darwin)
+          curl -L https://github.com/astefanutti/decktape/releases/download/v1.0.0/phantomjs-osx-cocoa-x86-64 -o phantomjs
+          ;;
+
+      MINGW* | MSYS* | CYGWIN*)
+          local _ostype=pc-windows-gnu
+          ;;
+
+      *)
+          err "unrecognized OS type: $_ostype"
+          ;;
+
+  esac
+
+  chmod +x phantomjs
+
+  echo ''
+  echo -e "\e[1m > Adding Path \e[0m "
+  echo ''
+
+  # Export Path
+  # (if it doesn't exist already)
+
+  grep -q -F "$pathExport" ~/.zshrc || echo $pathExport >> ~/.zshrc
+  grep -q -F "$pathExport" ~/.bashrc || echo $pathExport >> ~/.bashrc
+
+  # Show help
+  echo -e "\e[1m > Done \e[0m "
+  echo ''
+  echo -e "\e[1mFor basic commands, type \e[34mdeck help\e[0m"
+  echo ''
+
+}
+
+
+newDeck () {
+
+  name=$1
+
+  mkdir $name
+
+  cd $name
+
+  touch slides.md
+
+  mkdir images
+
+  mkdir output
+
+  git init --quiet
+
+  echo "output" >> .gitignore
+
+  echo "Deck Created"
+
+}
+
+exportDeck () {
+
+  DEFAULT_THEME="polysync"
+
+  local currentDir=$(pwd)
+  local name=${currentDir##*/}
+  local type=$1
+  local theme=${2:-$DEFAULT_THEME}
+
+  local tempHTML="temp.html"
+  local outputDir="output"
+
+  [ -e $tempHTML ] && rm $tempHTML
+
+  # Build the temp HTML
+  cat $appDir/themes/$theme/header.html >> $tempHTML
+  cat slides.md >> $tempHTML
+  cat $appDir/themes/$theme/footer.html >> $tempHTML
+
+  case "$type" in
+
+    pdf)
+      echo ">>>> Building PDF"
+      cd $appDir/decktape-1.0.0
+      ./phantomjs decktape.js "$currentDir/$tempHTML" "$currentDir/$outputDir/$name.pdf"
+        ;;
+
+    html)
+      echo ">>>> Exporting HTML"
+
+      # Remove if exists
+      [ -e $outputDir/$name ] && rm -rf $outputDir/$name
+      mkdir $outputDir/$name
+
+      # Move in new files
+      mv $tempHTML $outputDir/$name/index.html
+      cp -r images/ $outputDir/$name/images/
+        ;;
+    *)
+        err "$command is not a valid type."
+        ;;
+
+  esac
+
+  [ -e $tempHTML ] && rm $tempHTML
+
+  echo "Done"
+
+  open "$currentDir/$outputDir"
+
+}
+
+showHelp () {
+
+  echo ""
+  echo "---------------------"
+  echo ""
+  echo -e "\e[34m\e[1m▣ PolySync Deck \e[0m "
+  echo ""
+  echo "Usage : deck [ command ] "
+  echo ""
+  echo "Commands : "
+  echo ""
+  echo -e "  \e[1m install \e[0m"
+  echo -e "    \e[2m- install deck files to ~/.polysync-deck \e[0m"
+  echo -e "  \e[1m help \e[0m "
+  echo -e "    \e[2m- open help (this) \e[0m"
+  echo -e "  \e[1m new [project-name] \e[0m"
+  echo -e "    \e[2m- create a new deck \e[0m"
+  echo -e "  \e[1m export [filetype] [theme-name] \e[0m"
+  echo -e "    \e[2m- export deck \e[0m"
+  echo -e "  \e[1m themes \e[0m"
+  echo -e "    \e[2m- open themes folder \e[0m"
+  echo -e "  \e[1m uninstall \e[0m"
+  echo -e "    \e[2m- zap deck \e[0m"
+  echo ""
+  echo "Export Filetypes : pdf, html"
+  echo ""
+  echo "---------------------"
+
+}
+
+uninstall () {
+
+  echo ">>>> Uninstalling ..."
+
+  # Remove Path
+  grep -v "polysync-deck" ~/.zshrc > ~/.zshrc-temp; mv ~/.zshrc-temp ~/.zshrc
+  grep -v "polysync-deck" ~/.bashrc > ~/.bashrc-temp; mv ~/.bashrc-temp ~/.bashrc
+
+  [ -e $appDir ] && rm -rf $appDir
+
+  echo "Done."
+
+}
+
+command=$1
+
+case "$command" in
+
+  install)
+    installDeck
+      ;;
+
+  help)
+    showHelp
+      ;;
+
+  new)
+    newDeck $2
+      ;;
+
+  themes)
+    open $appDir/themes
+      ;;
+
+  export)
+    type=$2
+    theme=$3
+    exportDeck $name $type $theme
+      ;;
+
+  uninstall)
+    uninstall
+      ;;
+
+  *)
+      err "Hmm ... $command is no a command I understand."
+      ;;
+
+esac
